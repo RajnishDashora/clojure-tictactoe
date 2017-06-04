@@ -86,28 +86,55 @@
             (for [i (range 3) j (range 3)]
               (mark-square board i j v)))))
 
-(defn game-tree
-  [board v]
-  {:board board :next (map #(game-tree % (opponent v)) (next-boards board v))})
+(defn possible-moves [board v]
+  (filter #(not (winner? % (opponent v))) (next-boards board v)))
 
-(defn winning-path
-  ([board v]
-   (winning-path board v [board]))
-  ([board v acc]
-   (if (or (winner? board v) (draw? board))
-     acc
-     (let [gt (game-tree board v)
-           possible-moves (filter #(not (winner? (:board %)  (opponent v))) (:next gt))]
-       (first  (for [next-move possible-moves
-                     :let [next-acc (conj acc next-move)
-                           actual-acc (winning-path next-move v next-acc)]
-                     :when (not= actual-acc next-acc)]
-                 actual-acc))))))
+(defn evaluate [board v]
+  (cond
+    (winner? board v) (* 10 (number-of-empty-squares board))
+    (winner? board (opponent v)) (* -10 (number-of-empty-squares board))
+    (draw? board) 0
+    :else nil))
+
+(defn find-min-score [board v]
+  (if-let [score (evaluate board v)]
+    score
+    (let [child-boards (next-boards board (opponent v))
+          possible-scores (map #(* -1 (find-min-score % (opponent v))) child-boards)]
+      (apply min possible-scores))))
+
+
+;; minimize for opponent when you can play
+(defn possible-scores
+  [board v]
+  (for [i (range 3) j (range 3)]
+    (if (mark-square board i j v)
+      (find-min-score (mark-square board i j v) v)
+      nil)))
+
+(defn maximize [scores]
+  (apply max (remove nil? scores)))
+
+(defn best-move
+  [board v]
+  (let [all-possible-scores (possible-scores board v)
+        max-score (maximize all-possible-scores)
+        index (.indexOf all-possible-scores max-score)]
+    (cond
+      (= index 0) {:x 0 :y 0}
+      (= index 1) {:x 0 :y 1}
+      (= index 2) {:x 0 :y 2}
+      (= index 3) {:x 1 :y 0}
+      (= index 4) {:x 1 :y 1}
+      (= index 5) {:x 1 :y 2}
+      (= index 6) {:x 2 :y 0}
+      (= index 7) {:x 2 :y 1}
+      (= index 8) {:x 2 :y 2})))
+
 
 (defn move
   [board v]
-  (let [x (rand-int 3)
-        y (rand-int 3)]
+  (let [{:keys [x y]} (best-move board v)]
     (if-let [next-board (mark-square board x y v)]
       next-board
       (recur board v))))
